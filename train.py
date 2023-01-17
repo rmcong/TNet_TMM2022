@@ -46,9 +46,6 @@ optimizer = torch.optim.Adam(params, opt.lr)
 image_root = opt.rgb_root
 gt_root = opt.gt_root
 t_root=opt.t_root
-test_image_root=opt.test_rgb_root
-test_gt_root=opt.test_gt_root
-test_t_root=opt.test_t_root
 save_path=opt.save_path
 
 if not os.path.exists(save_path):
@@ -57,7 +54,6 @@ if not os.path.exists(save_path):
 #load data
 print('load data...')
 train_loader = get_loader(image_root, gt_root,t_root, batchsize=opt.batchsize, trainsize=opt.trainsize)
-test_loader = test_dataset(test_image_root, test_gt_root,test_t_root, opt.trainsize)
 total_step = len(train_loader)
 
 logging.basicConfig(filename=save_path+'log.log',format='[%(asctime)s-%(filename)s-%(levelname)s:%(message)s]', level = logging.INFO,filemode='a',datefmt='%Y-%m-%d %I:%M:%S %p')
@@ -163,39 +159,6 @@ def train(train_loader, model, optimizer, epoch,save_path):
         print('save checkpoints successfully!')
         raise
 
-#test function
-def test(test_loader,model,epoch,save_path):
-    global best_mae,best_epoch
-    model.eval()
-    with torch.no_grad():
-        mae_sum=0
-        for i in range(test_loader.size):
-            image, gt, t, name, img_for_post = test_loader.load_data()
-            gt = np.asarray(gt, np.float32)
-            gt /= (gt.max() + 1e-8)
-            image = image.cuda()
-            t = t.cuda()
-
-            with torch.no_grad():
-                R, L = net(image)
-
-            res,ttt,u4,u3,u2,u1 = model(image,t,L)
-            res = F.interpolate(res, size=gt.shape, mode='bilinear', align_corners=False)
-            res = res.data.cpu().numpy().squeeze()
-            res = (res - res.min()) / (res.max() - res.min() + 1e-8)
-            mae_sum+=np.sum(np.abs(res-gt))*1.0/(gt.shape[0]*gt.shape[1])
-        mae=mae_sum/test_loader.size
-        writer.add_scalar('MAE', torch.tensor(mae), global_step=epoch)
-        print('Epoch: {} MAE: {} ####  bestMAE: {} bestEpoch: {}'.format(epoch,mae,best_mae,best_epoch))
-        if epoch==1:
-            best_mae=mae
-        else:
-            if mae<best_mae:
-                best_mae=mae
-                best_epoch=epoch
-                torch.save(model.state_dict(), save_path+'TNet_epoch_best.pth')
-                print('best epoch:{}'.format(epoch))
-        logging.info('#TEST#:Epoch:{} MAE:{} bestEpoch:{} bestMAE:{}'.format(epoch,mae,best_epoch,best_mae))
 
 if __name__ == '__main__':
     print("Start train...")
@@ -203,4 +166,3 @@ if __name__ == '__main__':
         cur_lr=adjust_lr(optimizer, opt.lr, epoch, opt.decay_rate, opt.decay_epoch)
         writer.add_scalar('learning_rate', cur_lr, global_step=epoch)
         train(train_loader, model, optimizer, epoch,save_path)
-        test(test_loader,model,epoch,save_path)
